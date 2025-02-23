@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Post & Paint 完整版</title>
+    <style>
+        /* 像素风格全局样式 */
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #6B8CFF;
+            font-family: 'Courier New', monospace;
+            image-rendering: pixelated;
+        }
+        .hud {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            color: white;
+            border: 2px solid #FFF;
+            z-index: 100;
+        }
+        .task-panel {
+            position: fixed;
+            top: 120px;
+            left: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="hud">
+        <div>❤️ 亲密度: <span id="intimacyValue">0</span></div>
+        <div>😊 心情: <span id="moodValue">50</span></div>
+        <button onclick="saveGame()">保存进度</button>
+        <button onclick="loadGame()">读取进度</button>
+    </div>
+    <div class="task-panel">
+        <h3>当前任务</h3>
+        <div id="currentTask">无</div>
+        <div id="taskProgress"></div>
+    </div>
+
+    <script src="https://pixijs.download/v7.2.4/pixi.min.js"></script>
+    <script>
+// 初始化核心
+const app = new PIXI.Application({
+    view: document.getElementById("gameCanvas"),
+    width: 1024,
+    height: 768,
+    backgroundColor: 0x88B0FF
+});
+
+/********************
+ * 角色动画系统
+ ********************/
+class CharacterAnimator {
+    static async create(spriteSheet, frameSize, animations) {
+        const baseTexture = PIXI.BaseTexture.from(spriteSheet);
+        const textures = [];
+        for(let i=0; i<animations.frames; i++){
+            const rect = new PIXI.Rectangle(
+                i * frameSize.width, 0,
+                frameSize.width, frameSize.height
+            );
+            textures.push(new PIXI.Texture(baseTexture, rect));
+        }
+        const animatedSprite = new PIXI.AnimatedSprite(textures);
+        animatedSprite.animationSpeed = animations.speed;
+        animatedSprite.play();
+        return animatedSprite;
+    }
+}
+
+/********************
+ * 任务链系统
+ ********************/
+class QuestSystem {
+    constructor() {
+        this.quests = [
+            {
+                id: 1,
+                title: "初次相遇",
+                steps: ["找到邮差", "对话三次"],
+                reward: { intimacy: 20 },
+                unlock: 0
+            },
+            {
+                id: 2,
+                title: "雨中送信",
+                steps: ["携带信件", "在雨天相遇"],
+                reward: { mood: 30 },
+                unlock: 1
+            }
+        ];
+        this.currentQuest = null;
+        this.progress = {};
+    }
+
+    startQuest(questId) {
+        const quest = this.quests.find(q => q.id === questId);
+        if(quest && quest.unlock <= this.completedQuests.length) {
+            this.currentQuest = quest;
+            this.progress[questId] = { step: 0 };
+            updateTaskUI();
+        }
+    }
+
+    completeStep() {
+        if(!this.currentQuest) return;
+        
+        this.progress[this.currentQuest.id].step++;
+        if(this.progress[this.currentQuest.id].step >= this.currentQuest.steps.length) {
+            this.giveReward();
+            this.currentQuest = null;
+        }
+        updateTaskUI();
+    }
+
+    giveReward() {
+        Object.entries(this.currentQuest.reward).forEach(([key, val]) => {
+            gameState.postman[key] += val;
+        });
+    }
+}
+
+/********************
+ * 存档系统
+ ********************/
+class SaveSystem {
+    static save(key, data) {
+        localStorage.setItem(key, JSON.stringify(data));
+    }
+
+    static load(key) {
+        return JSON.parse(localStorage.getItem(key));
+    }
+}
+
+/********************
+ * 游戏主系统
+ ********************/
+const gameState = {
+    postman: {
+        mood: 50,
+        intimacy: 0,
+        position: { x: 100, y: 300 },
+        state: 'idle'
+    },
+    painter: {
+        mood: 50,
+        intimacy: 0,
+        position: { x: 900, y: 300 },
+        state: 'idle'
+    },
+    quests: new QuestSystem(),
+    weather: 'sunny'
+};
+
+// 初始化角色动画
+async function initCharacters() {
+    // 邮差动画（示例图片需替换）
+    const postmanAnim = await CharacterAnimator.create(
+        'https://via.placeholder.com/256x32.png/FF6B6B/FFFFFF?text=PostmanSprite',
+        { width: 32, height: 32 },
+        { frames: 8, speed: 0.1 }
+    );
+    postmanAnim.position.set(100, 300);
+    app.stage.addChild(postmanAnim);
+
+    // 画家动画
+    const painterAnim = await CharacterAnimator.create(
+        'https://via.placeholder.com/256x32.png/4ECDC4/FFFFFF?text=PainterSprite',
+        { width: 32, height: 32 },
+        { frames: 8, speed: 0.1 }
+    );
+    painterAnim.position.set(900, 300);
+    app.stage.addChild(painterAnim);
+}
+
+// 交互系统
+function handleInteraction() {
+    // 示例互动逻辑
+    gameState.postman.intimacy += 5;
+    gameState.postman.mood += 3;
+    
+    // 任务进度更新
+    if(gameState.quests.currentQuest?.id === 1) {
+        gameState.quests.completeStep();
+    }
+    
+    updateUI();
+}
+
+// 界面更新
+function updateUI() {
+    document.getElementById('moodValue').textContent = gameState.postman.mood;
+    document.getElementById('intimacyValue').textContent = gameState.postman.intimacy;
+}
+
+function updateTaskUI() {
+    const quest = gameState.quests.currentQuest;
+    if(quest) {
+        document.getElementById('currentTask').textContent = quest.title;
+        document.getElementById('taskProgress').textContent = 
+            `进度: ${gameState.quests.progress[quest.id].step + 1}/${quest.steps.length}`;
+    }
+}
+
+// 存档功能
+function saveGame() {
+    SaveSystem.save('postPaintSave', {
+        version: 1.0,
+        state: gameState,
+        timestamp: new Date().getTime()
+    });
+    alert('游戏已保存！');
+}
+
+function loadGame() {
+    const saveData = SaveSystem.load('postPaintSave');
+    if(saveData) {
+        Object.assign(gameState, saveData.state);
+        updateUI();
+        updateTaskUI();
+        alert('存档已加载！');
+    }
+}
+
+// 启动游戏
+initCharacters();
+app.stage.interactive = true;
+app.stage.on('pointerdown', handleInteraction);
+    </script>
+</body>
+</html>

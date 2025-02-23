@@ -1,0 +1,8 @@
+// 在QuestSystem中添加新任务
+   {
+       id: 3,
+       title: "联合创作",
+       steps: ["收集颜料", "完成壁画"],
+       reward: { intimacy: 50 },
+       unlock: 2
+   }
